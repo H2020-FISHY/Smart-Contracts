@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fishy-sc-postgres-secret
+  labels:
+    app: fishy-sc-postgres
+type: Opaque
+stringData:
+  POSTGRES_USER: xxxxxxxxx 
+  POSTGRES_PASSWORD: xxxxxxxxx
+  POSTGRES_DB: xxxxxxxxx
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fishy-sc-postgres-pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fishy-sc-postgres
+  labels:
+    app: fishy-sc-postgres
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: fishy-sc-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishy-sc-postgres
+  labels:
+    app: fishy-sc-postgres
+spec:
+  selector:
+    matchLabels:
+      app: fishy-sc-postgres
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: fishy-sc-postgres
+    spec:
+      containers:
+        - name: fishy-sc-postgres
+          image: postgres:9.5
+          env:
+          - name: POSTGRES_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_PASSWORD
+          - name: POSTGRES_DB
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_DB
+          - name: PGDATA
+            value: /var/lib/postgresql/data/fishy-sc
+          ports:
+          - containerPort: 5432
+          volumeMounts:
+          - name: fishy-sc-postgres-data
+            mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: fishy-sc-postgres-data
+          persistentVolumeClaim:
+            claimName: fishy-sc-postgres-pv-claim

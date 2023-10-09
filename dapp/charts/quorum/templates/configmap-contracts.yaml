@@ -1,0 +1,74 @@
+{{- if .Values.deployContracts }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migrate-handler-js
+  namespace: {{ .Release.Namespace }}
+data:
+  2_migrate_handler.js: |
+    const smart_contract = process.env.CONTRACT_NAME;
+    const public_key = process.env.QUORUM_NODE_PUBLIC_KEY;
+    const quorum_contract_host = process.env.QUORUM_CONTRACT_HOST;
+    const GenericContract = artifacts.require(smart_contract);
+
+    const fs = require('fs');
+    const abi_path = '/opt/build/contracts/';
+    const save_file = '/opt/contracts_info/deployed_contract_' + smart_contract + '_' + quorum_contract_host + '.json';
+
+
+    module.exports = async function(deployer, network, accounts) {
+
+        // https://ethereum.stackexchange.com/questions/70232/how-to-pass-account-address-to-truffle-deployer
+        const deployerAddress = accounts[0];
+    
+        await deployer.deploy(GenericContract, {gas: 0x47b760, privateFor: [public_key]});
+        const generic_contract = await GenericContract.deployed();
+
+        // https://piyopiyo.medium.com/how-to-get-contract-abi-in-truffle-22d0c0457ceb
+        const contract_abi = abi_path + smart_contract + '.json';
+        const contract = JSON.parse(fs.readFileSync(contract_abi, 'utf-8'));
+
+        const contract_info = {'contractAddress': generic_contract.address, 'abi': contract.abi, 'deployerAddress': deployerAddress};
+        const contract_info_json = JSON.stringify(contract_info);
+
+        fs.writeFileSync(save_file, contract_info_json);
+        
+    }; 
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: handler-sol
+  namespace: {{ .Release.Namespace }}
+data:
+  Handler.sol: |
+    pragma solidity ^0.8.0;
+
+    contract Handler {
+        address private _owner;
+
+        mapping(bytes => string) IpfsLinks;
+
+        modifier onlyOwner() {
+            require(msg.sender == _owner, "Caller is not owner!");
+            _;
+        }
+
+        event NewLink(bytes, string);
+
+        constructor() {
+            _owner = msg.sender;
+        }
+
+        function storeLink(bytes memory _linkId, string memory _ipfsLink) public onlyOwner {
+            IpfsLinks[_linkId] = _ipfsLink;
+            emit NewLink(_linkId, _ipfsLink);
+        }
+
+        function getLink(bytes memory _linkId) public view returns (string memory) {
+            return IpfsLinks[_linkId];
+        }
+
+    }
+---
+{{- end }}

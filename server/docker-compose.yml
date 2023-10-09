@@ -1,0 +1,288 @@
+
+version: "3"
+
+volumes:
+  database:
+  redis:
+  ipfs-files:
+  bootstrap_ipfs_path: 
+  bootstrap_ipfs_fuse:
+  bootstrap_ipns_fuse:
+  ipfs_path: 
+  ipfs_fuse:
+  ipns_fuse:
+
+secrets:
+  swarm_key_secret:
+    file: swarm.key
+
+networks:
+  default:
+    external:
+      name: fishy-sc-network
+
+services:
+  database:
+    image: postgres:9.5
+    container_name: fishy-sc-database
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+  redis:
+    image: redis
+    #hostname: ${REDIS_HOST}
+    container_name: fishy-sc-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis:/data
+    restart: unless-stopped
+    networks:
+      - default
+  celery-worker:
+    image: fishy-sc-celery-worker
+    hostname: celery-worker
+    container_name: fishy-sc-celery-worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - database
+      - redis
+    command: ['pipenv', 'run', 'celery', '-A', 'server.celery', 'worker', '-l', 'info', '--without-gossip', '--without-mingle', '--without-heartbeat', '-Ofair', '-E']
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FISHY_RABBITMQ_USER=${FISHY_RABBITMQ_USER}
+      - FISHY_RABBITMQ_PASSWORD=${FISHY_RABBITMQ_PASSWORD}
+      - FISHY_RABBITMQ_HOST=${FISHY_RABBITMQ_HOST}
+      - FISHY_RABBITMQ_PORT=${FISHY_RABBITMQ_PORT}
+      - FISHY_RABBITMQ_EXCHANGE=${FISHY_RABBITMQ_EXCHANGE}
+      - FISHY_RABBITMQ_ROUTING_KEY=${FISHY_RABBITMQ_ROUTING_KEY}
+      - SMART_CONTRACTS_RABBITMQ_USER=${SMART_CONTRACTS_RABBITMQ_USER}
+      - SMART_CONTRACTS_RABBITMQ_PASSWORD=${SMART_CONTRACTS_RABBITMQ_PASSWORD}
+      - SMART_CONTRACTS_RABBITMQ_HOST=${SMART_CONTRACTS_RABBITMQ_HOST}
+      - SMART_CONTRACTS_RABBITMQ_PORT=${SMART_CONTRACTS_RABBITMQ_PORT}
+      - SMART_CONTRACTS_RABBITMQ_EXCHANGE=${SMART_CONTRACTS_RABBITMQ_EXCHANGE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY}
+      - SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - QUORUM_URL=${QUORUM_URL}
+      - QUORUM_CONTRACT_HOST=${QUORUM_CONTRACT_HOST}
+      - PUBLIC_KEY=${PUBLIC_KEY}
+      - IPFS_HOST=${IPFS_HOST}
+      - IPFS_PORT=${IPFS_PORT}
+      - IPFS_BASE_LINK=${IPFS_BASE_LINK}
+    restart: unless-stopped
+    networks:
+      - default
+  celery-beat:
+    image: fishy-sc-celery-beat
+    hostname: celery-beat
+    container_name: fishy-sc-celery-beat
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - database
+      - redis
+      - celery-worker
+    command: ['pipenv', 'run', 'celery', '-A', 'server.celery', 'beat']
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD={POSTGRES_PASSWORD}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FISHY_RABBITMQ_USER=${FISHY_RABBITMQ_USER}
+      - FISHY_RABBITMQ_PASSWORD=${FISHY_RABBITMQ_PASSWORD}
+      - FISHY_RABBITMQ_HOST=${FISHY_RABBITMQ_HOST}
+      - FISHY_RABBITMQ_PORT=${FISHY_RABBITMQ_PORT}
+      - FISHY_RABBITMQ_EXCHANGE=${FISHY_RABBITMQ_EXCHANGE}
+      - FISHY_RABBITMQ_ROUTING_KEY=${FISHY_RABBITMQ_ROUTING_KEY}
+      - SMART_CONTRACTS_RABBITMQ_USER=${SMART_CONTRACTS_RABBITMQ_USER}
+      - SMART_CONTRACTS_RABBITMQ_PASSWORD=${SMART_CONTRACTS_RABBITMQ_PASSWORD}
+      - SMART_CONTRACTS_RABBITMQ_HOST=${SMART_CONTRACTS_RABBITMQ_HOST}
+      - SMART_CONTRACTS_RABBITMQ_PORT=${SMART_CONTRACTS_RABBITMQ_PORT}
+      - SMART_CONTRACTS_RABBITMQ_EXCHANGE=${SMART_CONTRACTS_RABBITMQ_EXCHANGE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY}
+      - SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - QUORUM_URL=${QUORUM_URL}
+      - QUORUM_CONTRACT_HOST=${QUORUM_CONTRACT_HOST}
+      - PUBLIC_KEY=${PUBLIC_KEY}
+      - IPFS_HOST=${IPFS_HOST}
+      - IPFS_PORT=${IPFS_PORT}
+      - IPFS_BASE_LINK=${IPFS_BASE_LINK}
+    restart: unless-stopped
+    networks:
+      - default
+  celery-flower:
+    image: fishy-sc-celery-flower
+    hostname: celery-flower
+    container_name: fishy-sc-celery-flower
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - database
+      - redis
+      - celery-worker
+      - celery-beat
+    command: ['pipenv', 'run', 'celery', '-A', 'server.celery', 'flower', '--address=0.0.0.0', '--loglevel=info']
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FISHY_RABBITMQ_USER=${FISHY_RABBITMQ_USER}
+      - FISHY_RABBITMQ_PASSWORD=${FISHY_RABBITMQ_PASSWORD}
+      - FISHY_RABBITMQ_HOST=${FISHY_RABBITMQ_HOST}
+      - FISHY_RABBITMQ_PORT=${FISHY_RABBITMQ_PORT}
+      - FISHY_RABBITMQ_EXCHANGE=${FISHY_RABBITMQ_EXCHANGE}
+      - FISHY_RABBITMQ_ROUTING_KEY=${FISHY_RABBITMQ_ROUTING_KEY}
+      - SMART_CONTRACTS_RABBITMQ_USER=${SMART_CONTRACTS_RABBITMQ_USER}
+      - SMART_CONTRACTS_RABBITMQ_PASSWORD=${SMART_CONTRACTS_RABBITMQ_PASSWORD}
+      - SMART_CONTRACTS_RABBITMQ_HOST=${SMART_CONTRACTS_RABBITMQ_HOST}
+      - SMART_CONTRACTS_RABBITMQ_PORT=${SMART_CONTRACTS_RABBITMQ_PORT}
+      - SMART_CONTRACTS_RABBITMQ_EXCHANGE=${SMART_CONTRACTS_RABBITMQ_EXCHANGE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY}
+      - SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - QUORUM_URL=${QUORUM_URL}
+      - QUORUM_CONTRACT_HOST=${QUORUM_CONTRACT_HOST}
+      - PUBLIC_KEY=${PUBLIC_KEY}
+      - IPFS_HOST=${IPFS_HOST}
+      - IPFS_PORT=${IPFS_PORT}
+      - IPFS_BASE_LINK=${IPFS_BASE_LINK}
+    ports:
+      - 5555:5555
+    restart: unless-stopped
+    networks:
+      - default
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FISHY_RABBITMQ_USER=${FISHY_RABBITMQ_USER}
+      - FISHY_RABBITMQ_PASSWORD=${FISHY_RABBITMQ_PASSWORD}
+      - FISHY_RABBITMQ_HOST=${FISHY_RABBITMQ_HOST}
+      - FISHY_RABBITMQ_PORT=${FISHY_RABBITMQ_PORT}
+      - FISHY_RABBITMQ_EXCHANGE=${FISHY_RABBITMQ_EXCHANGE}
+      - FISHY_RABBITMQ_ROUTING_KEY=${FISHY_RABBITMQ_ROUTING_KEY}
+      - SMART_CONTRACTS_RABBITMQ_USER=${SMART_CONTRACTS_RABBITMQ_USER}
+      - SMART_CONTRACTS_RABBITMQ_PASSWORD=${SMART_CONTRACTS_RABBITMQ_PASSWORD}
+      - SMART_CONTRACTS_RABBITMQ_HOST=${SMART_CONTRACTS_RABBITMQ_HOST}
+      - SMART_CONTRACTS_RABBITMQ_PORT=${SMART_CONTRACTS_RABBITMQ_PORT}
+      - SMART_CONTRACTS_RABBITMQ_EXCHANGE=${SMART_CONTRACTS_RABBITMQ_EXCHANGE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY}
+      - SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - QUORUM_URL=${QUORUM_URL}
+      - QUORUM_CONTRACT_HOST=${QUORUM_CONTRACT_HOST}
+      - PUBLIC_KEY=${PUBLIC_KEY}
+      - IPFS_HOST=${IPFS_HOST}
+      - IPFS_PORT=${IPFS_PORT}
+      - IPFS_BASE_LINK=${IPFS_BASE_LINK}
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - ipfs-files:/app/server/ipfs_files
+    networks:
+      - default
+  events-parser:
+    image: fishy-events-parser
+    hostname: events-parser
+    container_name: fishy-events-parser
+    depends_on:
+      - database
+      - redis
+      - celery-worker
+      - celery-beat
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ['pipenv', 'run', 'python3', '-u', 'manage.py', 'events_parser']
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FISHY_RABBITMQ_USER=${FISHY_RABBITMQ_USER}
+      - FISHY_RABBITMQ_PASSWORD=${FISHY_RABBITMQ_PASSWORD}
+      - FISHY_RABBITMQ_HOST=${FISHY_RABBITMQ_HOST}
+      - FISHY_RABBITMQ_PORT=${FISHY_RABBITMQ_PORT}
+      - FISHY_RABBITMQ_EXCHANGE=${FISHY_RABBITMQ_EXCHANGE}
+      - FISHY_RABBITMQ_ROUTING_KEY=${FISHY_RABBITMQ_ROUTING_KEY}
+      - SMART_CONTRACTS_RABBITMQ_USER=${SMART_CONTRACTS_RABBITMQ_USER}
+      - SMART_CONTRACTS_RABBITMQ_PASSWORD=${SMART_CONTRACTS_RABBITMQ_PASSWORD}
+      - SMART_CONTRACTS_RABBITMQ_HOST=${SMART_CONTRACTS_RABBITMQ_HOST}
+      - SMART_CONTRACTS_RABBITMQ_PORT=${SMART_CONTRACTS_RABBITMQ_PORT}
+      - SMART_CONTRACTS_RABBITMQ_EXCHANGE=${SMART_CONTRACTS_RABBITMQ_EXCHANGE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE}
+      - SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY=${SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY}
+      - SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY=${SACM_SMART_CONTRACTS_RABBITMQ_ROUTING_KEY}
+      - QUORUM_URL=${QUORUM_URL}
+      - QUORUM_CONTRACT_HOST=${QUORUM_CONTRACT_HOST}
+      - PUBLIC_KEY=${PUBLIC_KEY}
+      - IPFS_HOST=${IPFS_HOST}
+      - IPFS_PORT=${IPFS_PORT}
+      - IPFS_BASE_LINK=${IPFS_BASE_LINK}
+    volumes:
+      - ipfs-files:/app/server/ipfs_files
+    restart: unless-stopped
+    networks:
+      - default
+  ipfs:
+    image: ipfs/kubo:v0.15.0
+    restart: unless-stopped
+    container_name: ipfs
+    volumes:
+      - ipfs_path:/data/ipfs
+      - ipfs_fuse:/ipfs
+      - ipns_fuse:/ipns
+      - ./start-ipfs.sh:/container-init.d/start-ipfs.sh
+    environment:
+      - IPFS_PATH=/data/ipfs
+      - IPFS_SWARM_KEY_FILE=/run/secrets/swarm_key_secret
+      - LIBP2P_FORCE_PNET=1
+    secrets:
+      - swarm_key_secret
+    ports:
+      # Swarm listens on all interfaces, so is remotely reachable.
+      - 4002:4001/tcp
+      - 4002:4001/udp
+      
+      # The following ports only listen on the loopback interface, so are not remotely reachable by default.
+      # If you want to override these or add more ports, see https://docs.docker.com/compose/extends/ .
+      
+      # API port, which includes admin operations, so you probably don't want this remotely accessible.
+      - 127.0.0.1:5001:5001
+      
+      # HTTP Gateway
+      - 127.0.0.1:8080:8080
+    networks:
+      - default

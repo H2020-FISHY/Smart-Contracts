@@ -1,0 +1,174 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fishy-sc-server-secret
+  labels:
+    app: fishy-sc-server
+type: Opaque
+stringData:
+  FISHY_RABBITMQ_USER: xxxxxxxxx 
+  FISHY_RABBITMQ_PASSWORD: xxxxxxxxx
+  FISHY_RABBITMQ_HOST: xxxxxxxxx
+  FISHY_RABBITMQ_PORT: xxxxxxxxx
+  FISHY_RABBITMQ_EXCHANGE: xxxxxxxxx
+  FISHY_RABBITMQ_ROUTING_KEY: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_USER: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_PASSWORD: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_HOST: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_PORT: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_EXCHANGE: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE: xxxxxxxxx
+  SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY: xxxxxxxxx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fishy-sc-server
+  labels:
+    app: fishy-sc-server
+spec:
+  type: NodePort
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: fishy-sc-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishy-sc-server
+  labels:
+    app: fishy-sc-server
+spec:
+  selector:
+    matchLabels:
+      app: fishy-sc-server
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: fishy-sc-server
+    spec:
+      imagePullSecrets:
+      - name: public-regcred
+      # https://medium.com/@xcoulon/initializing-containers-in-order-with-kubernetes-18173b9cc222
+      initContainers:
+      - name: postgres-health
+        image: postgres:9.5
+        command: ['sh', '-c', 
+          'until pg_isready -h fishy-sc-postgres -p 5432; 
+          do echo waiting for postgres; sleep 5; done;']
+      containers:
+        - name: fishy-sc-server
+          image: synelixis/fishy-sc-server:v0.2.3
+          env:
+          - name: POSTGRES_HOST
+            value: fishy-sc-postgres
+          - name: POSTGRES_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_PASSWORD
+          - name: POSTGRES_DB
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_DB
+          - name: FISHY_RABBITMQ_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_USER
+          - name: FISHY_RABBITMQ_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_PASSWORD
+          - name: FISHY_RABBITMQ_HOST
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_HOST
+          - name: FISHY_RABBITMQ_PORT
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_PORT
+          - name: FISHY_RABBITMQ_EXCHANGE
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_EXCHANGE
+          - name: FISHY_RABBITMQ_ROUTING_KEY
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_ROUTING_KEY
+          - name: SMART_CONTRACTS_RABBITMQ_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_USER
+          - name: SMART_CONTRACTS_RABBITMQ_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_PASSWORD
+          - name: SMART_CONTRACTS_RABBITMQ_HOST
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_HOST
+          - name: SMART_CONTRACTS_RABBITMQ_PORT
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_PORT
+          - name: SMART_CONTRACTS_RABBITMQ_EXCHANGE
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_EXCHANGE
+          - name: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE
+          - name: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY
+          - name: CELERY_BROKER_URL
+            value: "redis://fishy-sc-redis:6379"
+          - name: QUORUM_URL
+            value: "http://quorum-node2-rpc:8545"
+          - name: QUORUM_CONTRACT_HOST
+            value: node2
+          - name: IPFS_HOST
+            value: ipfs
+          - name: IPFS_PORT
+            value: "5001"
+          - name: IPFS_BASE_LINK
+            value: "http://127.0.0.1:8080/ipfs"
+          ports:
+          - containerPort: 8000
+          volumeMounts:
+          - name: quorum-contracts-info-pvc
+            mountPath: /opt
+          - name: quorum-node-pvc
+            mountPath: /opt/tm
+      volumes:
+      - name: quorum-contracts-info-pvc
+        persistentVolumeClaim:
+          claimName: quorum-contracts-info-pvc
+      - name: quorum-node-pvc
+        persistentVolumeClaim:
+          claimName: quorum-node2-pvc

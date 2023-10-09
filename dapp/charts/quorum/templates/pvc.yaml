@@ -1,0 +1,88 @@
+{{ $scope := . }}
+{{- range $k, $v := .Values.nodes -}}
+# Persistent Storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}-pvc
+  namespace: {{ $scope.Release.Namespace }}
+  annotations:
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ default "40Gi" $scope.Values.persistence.storageSize }}
+  {{- if $scope.Values.persistence.storageClass.enabled }}
+  storageClassName: {{ $scope.Values.persistence.storageClass.name | quote }}
+  {{- end }}
+  volumeName: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}-pv
+---
+{{ end }}
+# Genesis Config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-genesis-config
+  namespace: {{ $scope.Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: "1Mi"
+  {{- if $scope.Values.persistence.storageClass.enabled }}
+  storageClassName: {{ $scope.Values.persistence.storageClass.name | quote }}
+  {{- end }}
+  volumeName: {{ include "quorum.fullname" $scope }}-genesis-config-pv
+---
+# Permissioned Nodes Config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-permissioned-config
+  namespace: {{ $scope.Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: "1Mi"
+  {{- if $scope.Values.persistence.storageClass.enabled }}
+  storageClassName: {{ $scope.Values.persistence.storageClass.name | quote }}
+  {{- end }}
+  volumeName: {{ include "quorum.fullname" $scope }}-permissioned-config-pv
+---
+# Istanbul Validator Config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-istanbul-validator-config
+  namespace: {{ $scope.Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: "1Mi"
+  {{- if $scope.Values.persistence.storageClass.enabled }}
+  storageClassName: {{ $scope.Values.persistence.storageClass.name | quote }}
+  {{- end }}
+  volumeName: {{ include "quorum.fullname" $scope }}-istanbul-validator-config-pv
+---
+# Deployed Contracts information
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-contracts-info-pvc
+  namespace: {{ $scope.Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: "1Mi"
+  {{- if $scope.Values.persistence.storageClass.enabled }}
+  storageClassName: {{ $scope.Values.persistence.storageClass.name | quote }}
+  {{- end }}
+  volumeName: {{ include "quorum.fullname" $scope }}-contracts-info-pv

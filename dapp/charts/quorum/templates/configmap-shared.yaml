@@ -1,0 +1,254 @@
+# Quorum permissioned nodes template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quorum-permissioned-config-tmpl
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "quorum.fullname" . }}
+    name: quorum-permissioned-config
+data:
+  permissioned-nodes.json.tmpl: |
+    [
+      {{ $scope := . }}
+      {{ $length := len .Values.nodes }}
+      {{ range $k, $v := .Values.nodes }}
+        {{ $index := $k | substr 4 6 | int }}
+        "enode://%{{ include "quorum.fullname" $scope }}-node{{ $index }}-enode%@{{ include "quorum.fullname" $scope }}-node{{ $index }}.{{ $scope.Release.Namespace }}:30303?discport=0&raftport=50401"{{ if lt $index $length }},{{ end }}
+      {{- end }}
+    ]
+---
+# Tessera templates
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tessera-config
+  namespace: {{ .Release.Namespace }}  
+  labels:
+    app: {{ include "quorum.fullname" . }}
+    name: tessera-config
+data:
+  tessera-config.json.tmpl: |-
+    {
+        "useWhiteList": false,
+        "jdbc": {
+            "username": "sa",
+            "password": "",
+            "url": "jdbc:h2:/etc/quorum/qdata/tm/db;MODE=Oracle;TRACE_LEVEL_SYSTEM_OUT=0",
+            "autoCreateTables": true
+        },
+        "server": {
+            "port": 9001,
+            "hostName": "http://%THIS_SERVICE_HOST%",
+            "bindingAddress": "http://0.0.0.0:9001",
+            "sslConfig": {
+                "tls": "OFF",
+                "generateKeyStoreIfNotExisted": true,
+                "serverKeyStore": "/etc/quorum/qdata/tm/server-keystore",
+                "serverKeyStorePassword": "quorum",
+                "serverTrustStore": "/etc/quorum/qdata/tm/server-truststore",
+                "serverTrustStorePassword": "quorum",
+                "serverTrustMode": "TOFU",
+                "knownClientsFile": "/etc/quorum/qdata/tm/knownClients",
+                "clientKeyStore": "/etc/quorum/qdata/tm/client-keystore",
+                "clientKeyStorePassword": "quorum",
+                "clientTrustStore": "/etc/quorum/qdata/tm/client-truststore",
+                "clientTrustStorePassword": "quorum",
+                "clientTrustMode": "TOFU",
+                "knownServersFile": "/etc/quorum/qdata/tm/knownServers"
+            }
+        },
+        "peer": [
+          {{ $scope := . }}
+          {{ $length := len .Values.nodes }}
+          {{ range $k, $v := .Values.nodes }}
+             {{ $index := $k | substr 4 6 | int }}
+             {
+               "url": "http://{{ include "quorum.fullname" $scope }}-node{{ $index }}.{{ $scope.Release.Namespace }}:9001"
+             }{{ if lt $index $length }},{{ end }}
+          {{- end }}
+        ],
+        "keys": {
+            "passwords": [],
+            "keyData": [
+                {
+                    "privateKeyPath": "/etc/quorum/qdata/tm/tm.key",
+                    "publicKeyPath": "/etc/quorum/qdata/tm/tm.pub"
+                }
+            ]
+        },
+        "alwaysSendTo": [],
+        "unixSocketFile": "/etc/quorum/qdata/tm/tm.ipc"
+    }
+  tessera-config-enhanced.json.tmpl: |-
+    {
+      "useWhiteList": false,
+      "jdbc": {
+        "username": "sa",
+        "password": "",
+        "url": "jdbc:h2:/etc/quorum/qdata/tm/db;MODE=Oracle;TRACE_LEVEL_SYSTEM_OUT=0",
+        "autoCreateTables": true
+      },
+      "serverConfigs":[
+        {
+          "app":"ThirdParty",
+          "enabled": true,
+          "serverSocket":{
+            "type":"INET",
+            "port": 9080,
+            "hostName": "http://%THIS_SERVICE_HOST%"
+          },
+          "communicationType" : "REST"
+        },
+        {
+          "app":"Q2T",
+          "enabled": true,
+          "serverSocket":{
+            "type":"UNIX",
+            "path":"/etc/quorum/qdata/tm/tm.ipc"
+          },
+          "communicationType" : "UNIX_SOCKET"
+        },
+        {
+          "app":"P2P",
+          "enabled": true,
+          "serverSocket":{
+            "type":"INET",
+            "port": 9001,
+            "hostName": "http://%THIS_SERVICE_HOST%",
+            "bindingAddress": "http://0.0.0.0:9001"
+          },
+          "sslConfig": {
+            "tls": "OFF",
+            "generateKeyStoreIfNotExisted": true,
+            "serverKeyStore": "/etc/quorum/qdata/tm/server-keystore",
+            "serverKeyStorePassword": "quorum",
+            "serverTrustStore": "/etc/quorum/qdata/tm/server-truststore",
+            "serverTrustStorePassword": "quorum",
+            "serverTrustMode": "TOFU",
+            "knownClientsFile": "/etc/quorum/qdata/tm/knownClients",
+            "clientKeyStore": "/etc/quorum/qdata/tm/client-keystore",
+            "clientKeyStorePassword": "quorum",
+            "clientTrustStore": "/etc/quorum/qdata/tm/client-truststore",
+            "clientTrustStorePassword": "quorum",
+            "clientTrustMode": "TOFU",
+            "knownServersFile": "/etc/quorum/qdata/tm/knownServers"
+          },
+          "communicationType" : "REST"
+        }
+      ],
+      "peer": [
+        {{ $scope := . }}
+        {{ $length := len .Values.nodes }}
+        {{ range $k, $v := .Values.nodes }}
+          {{ $index := $k | substr 4 6 | int }}
+            {
+              "url": "http://{{ include "quorum.fullname" $scope }}-node{{ $index }}.{{ $scope.Release.Namespace }}:9001"
+            }{{ if lt $index $length }},{{ end }}
+        {{- end }}
+      ],
+      "keys": {
+        "passwords": [],
+        "keyData": [
+          {
+            "config": %THIS_PRIV_KEY%,
+            "publicKey": "%THIS_PUB_KEY%"
+          }
+        ]
+      },
+      "alwaysSendTo": []
+    }
+  tessera-config-9.0.json.tmpl: |-
+    {
+      "useWhiteList": false,
+      "jdbc": {
+        "username": "sa",
+        "password": "",
+        "url": "jdbc:h2:/etc/quorum/qdata/tm/db;MODE=Oracle;TRACE_LEVEL_SYSTEM_OUT=0",
+        "autoCreateTables": true
+      },
+      "serverConfigs":[
+      {
+        "app":"ThirdParty",
+        "enabled": true,
+        "serverAddress": "http://%THIS_SERVICE_HOST%:9080",
+        "cors": {
+            "allowedMethods": [
+                "GET",
+                "OPTIONS"
+            ],
+            "allowedOrigins": [
+                "*"
+            ]
+        },
+        "communicationType" : "REST"
+      },
+      {
+        "app":"Q2T",
+        "enabled": true,
+        "serverAddress":"unix:/etc/quorum/qdata/tm/tm.ipc",
+        "communicationType" : "REST"
+      },
+      {
+        "app":"P2P",
+        "enabled": true,
+        "serverAddress":"http://%THIS_SERVICE_HOST%:9001",
+        "sslConfig": {
+          "tls": "OFF",
+          "generateKeyStoreIfNotExisted": true,
+          "serverKeyStore": "/etc/quorum/qdata/tm/server-keystore",
+          "serverKeyStorePassword": "quorum",
+          "serverTrustStore": "/etc/quorum/qdata/tm/server-truststore",
+          "serverTrustStorePassword": "quorum",
+          "serverTrustMode": "TOFU",
+          "knownClientsFile": "/etc/quorum/qdata/tm/knownClients",
+          "clientKeyStore": "/etc/quorum/qdata/tm/client-keystore",
+          "clientKeyStorePassword": "quorum",
+          "clientTrustStore": "/etc/quorum/qdata/tm/client-truststore",
+          "clientTrustStorePassword": "quorum",
+          "clientTrustMode": "TOFU",
+          "knownServersFile": "/etc/quorum/qdata/tm/knownServers"
+        },
+        "communicationType" : "REST"
+      }
+      ],
+        "peer": [
+          {{ $scope := . }}
+          {{ $length := len .Values.nodes }}
+          {{ range $k, $v := .Values.nodes }}
+             {{ $index := $k | substr 4 6 | int }}
+             {
+                "url": "http://{{ include "quorum.fullname" $scope }}-node{{ $index }}.{{ $scope.Release.Namespace }}:9001"
+             }{{ if lt $index $length }},{{ end }}
+          {{- end }}        
+        ],
+        "keys": {
+             "passwords": [],
+             "keyData": [
+                {
+                    "privateKeyPath": "%THIS_PRIV_KEY%",
+                    "publicKeyPath": "%THIS_PUB_KEY%"
+                }
+              ]
+         },
+        "alwaysSendTo": [],
+        "features": {
+            "enablePrivacyEnhancements": true
+        }
+    }
+---
+# Istanbul validator template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istanbul-validator-config-tmpl
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "quorum.fullname" . }}
+    name: istanbul-validator-config-tmpl
+data:
+  istanbul-validator-config.toml.tmpl: |-
+    vanity = "0x00"
+    validators = [
+      {{ $scope := . }}{{ $length := len .Values.nodes }}{{ range $k, $v := .Values.nodes }}{{ $index := $k | substr 4 6 | int }}"%{{ include "quorum.fullname" $scope }}-node{{ $index }}-nodekeyaddress%"{{ if lt $index $length }},{{ end }}{{ end }}{{ printf "\n" }}
+    ]

@@ -1,0 +1,88 @@
+{{ $scope := . }}
+{{- range $k, $v := .Values.nodes -}}
+# Persistent Storage
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}-pv
+  namespace: {{ $scope.Release.Namespace }}
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: {{ default "40Gi" $scope.Values.persistence.storageSize }}
+  hostPath:
+    path: "/mnt/fishy-quorum-node{{ $k | substr 4 6}}"
+    type: DirectoryOrCreate
+---
+{{ end }}
+# Genesis Config
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-genesis-config-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: "1Mi"
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/fishy-quorum-genesis-config"
+    type: DirectoryOrCreate
+---
+# Permissioned Nodes Config
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-permissioned-config-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: "1Mi"
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/fishy-quorum-permissioned-config"
+    type: DirectoryOrCreate
+---
+# Istanbul Validator Config
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-istanbul-validator-config-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: "1Mi"
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/fishy-quorum-istanbul-validator-config"   
+    type: DirectoryOrCreate
+---
+# Deployed Contracts information
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-contracts-info-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: "1Mi"
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/fishy-quorum-contracts-info"
+    type: DirectoryOrCreate

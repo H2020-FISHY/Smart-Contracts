@@ -1,0 +1,87 @@
+{{- if .Values.deployContracts }}
+{{ $scope := . }}
+{{ range $k, $v := .Values.nodes }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-deploy-contracts-job
+  namespace: {{ $scope.Release.Namespace }}
+spec:
+  ttlSecondsAfterFinished: 100
+  backoffLimit: 5
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - fishy-control-services-worker-1
+      {{- with $scope.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $scope.Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-contracts-deployment
+        image: "{{ $scope.Values.image.contracts.repository }}:{{ $scope.Values.image.contracts.tag }}"
+        command: ["sh"]
+        args:
+          - "-cx"
+          - "
+              while ! nc -z $QUORUM_NODE_HOST $QUORUM_NODE_PORT; do
+                echo \"Waiting for Quorum listening at $QUORUM_NODE_HOST:$QUORUM_NODE_PORT ...\";
+                sleep 10;
+              done;
+
+              export QUORUM_NODE_PUBLIC_KEY=$(cat /opt/tm/tm.pub);
+
+              QUORUM_NODE_PUBLIC_KEY=$QUORUM_NODE_PUBLIC_KEY sh setup.sh;
+            "
+        env:
+          - name: CONTRACT_NAME
+            value: Handler
+          - name: QUORUM_NODE_HOST
+            value: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-rpc.{{ $scope.Release.Namespace }}
+          - name: QUORUM_CONTRACT_HOST
+            value: node{{ $k | substr 4 6 }}
+          - name: QUORUM_NODE_PORT
+            value: {{ default 8545 $scope.Values.port | quote }}
+          - name: QUORUM_NETWORK_ID
+            value: {{ default 1000 $scope.Values.geth.networkId | quote }}
+        volumeMounts:
+          - name: deployed-contracts-info
+            mountPath: /opt/contracts_info
+          - name: contracts-sol
+            mountPath:  /opt/migrations/2_migrate_handler.js
+            subPath: 2_migrate_handler.js
+          - name: contracts-sol
+            mountPath:  /opt/contracts/Handler.sol
+            subPath: Handler.sol
+          - name: quorum-persistent-storage
+            mountPath: /opt/tm
+            subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-tm
+      volumes:
+        - name: contracts-sol
+          projected:
+            sources:
+              - configMap:
+                  name: migrate-handler-js
+              - configMap:
+                  name: handler-sol
+        # Deployed Contracts information PVC
+        - name: deployed-contracts-info
+          persistentVolumeClaim:
+            claimName: {{ include "quorum.fullname" $scope }}-contracts-info-pvc
+        # Persistent Storage PVC
+        - name: quorum-persistent-storage
+          persistentVolumeClaim:
+            claimName: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-pvc
+      restartPolicy: Never
+---
+{{ end }}
+{{- end }}

@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fishy-sc-celery-beat
+  labels:
+    app: fishy-sc-celery-beat
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: fishy-sc-celery-beat
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishy-sc-celery-beat
+  labels:
+    app: fishy-sc-celery-beat
+spec:
+  selector:
+    matchLabels:
+      app: fishy-sc-celery-beat
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: fishy-sc-celery-beat
+    spec:
+      imagePullSecrets:
+      - name: public-regcred
+      containers:
+        - name: fishy-sc-celery-beat
+          image: synelixis/fishy-sc-server:v0.2.3
+          command: ['pipenv', 'run', 'celery', '-A', 'server.celery', 'beat']
+          env:
+          - name: POSTGRES_HOST
+            value: fishy-sc-postgres
+          - name: POSTGRES_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_USER
+          - name: POSTGRES_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_PASSWORD
+          - name: POSTGRES_DB
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-postgres-secret
+                key: POSTGRES_DB
+          - name: FISHY_RABBITMQ_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_USER
+          - name: FISHY_RABBITMQ_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_PASSWORD
+          - name: FISHY_RABBITMQ_HOST
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_HOST
+          - name: FISHY_RABBITMQ_PORT
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_PORT
+          - name: FISHY_RABBITMQ_EXCHANGE
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_EXCHANGE
+          - name: FISHY_RABBITMQ_ROUTING_KEY
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: FISHY_RABBITMQ_ROUTING_KEY
+          - name: SMART_CONTRACTS_RABBITMQ_USER
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_USER
+          - name: SMART_CONTRACTS_RABBITMQ_PASSWORD
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_PASSWORD
+          - name: SMART_CONTRACTS_RABBITMQ_HOST
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_HOST
+          - name: SMART_CONTRACTS_RABBITMQ_PORT
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_PORT
+          - name: SMART_CONTRACTS_RABBITMQ_EXCHANGE
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_EXCHANGE
+          - name: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_VALIDATE
+          - name: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY
+            valueFrom: 
+              secretKeyRef:
+                name: fishy-sc-server-secret
+                key: SMART_CONTRACTS_RABBITMQ_ROUTING_KEY_RETRY
+          - name: CELERY_BROKER_URL
+            value: "redis://fishy-sc-redis:6379"
+          - name: QUORUM_URL
+            value: "http://quorum-node2-rpc:8545"
+          - name: QUORUM_CONTRACT_HOST
+            value: node2
+          - name: IPFS_HOST
+            value: ipfs
+          - name: IPFS_PORT
+            value: "5001"
+          - name: IPFS_BASE_LINK
+            value: "http://127.0.0.1:8080/ipfs"
+          ports:
+          - containerPort: 8000

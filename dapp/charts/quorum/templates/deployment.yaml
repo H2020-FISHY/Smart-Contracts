@@ -1,0 +1,365 @@
+{{ $scope := . }}
+{{ range $k, $v := .Values.nodes }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-deployment
+  namespace: {{ $scope.Release.Namespace }}
+spec:
+  strategy:
+    type: RollingUpdate
+  replicas: 1
+  selector:
+    matchLabels:
+      name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-deployment
+  template:
+    metadata:
+      name:  {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-deployment
+      labels:
+        app: {{ include "quorum.fullname" $scope }}
+        tier: backend
+        name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-deployment
+      annotations:
+        k8s.v1.cni.cncf.io/networks: net-contracts  
+    spec:
+      securityContext:
+        {{- toYaml $scope.Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: quorum-genesis-init-container
+        image: "{{ $scope.Values.image.quorum_init.repository }}:{{ $scope.Values.image.quorum_init.tag }}"
+        command: [ "sh" ]
+        args:
+        - "-cx"
+        - "mkdir -p $QUORUM_DATA_DIR/geth;
+
+           if [ ! -f $QUORUM_DATA_DIR/geth/nodekey ]; then
+              bootnode -genkey $QUORUM_DATA_DIR/geth/nodekey;
+           fi;
+           if [ ! -f $QUORUM_DATA_DIR/geth/enode ]; then
+              bootnode -nodekey $QUORUM_DATA_DIR/geth/nodekey -writeaddress > $QUORUM_DATA_DIR/geth/enode;
+           fi; 
+
+           if [ ! -f $QUORUM_DATA_DIR/password.txt ]; then
+              touch $QUORUM_DATA_DIR/password.txt;
+           fi;
+           if [ ! -f $QUORUM_DATA_DIR/keystore/key ]; then
+              geth --datadir $QUORUM_DATA_DIR account new --password $QUORUM_DATA_DIR/password.txt 2> /dev/null | grep \"Public address of the key:\" | cut -c 30- > $QUORUM_DATA_DIR/nodekeyaddress;
+              ls $QUORUM_DATA_DIR/keystore | xargs -I % mv $QUORUM_DATA_DIR/keystore/% $QUORUM_DATA_DIR/keystore/key;
+           fi;
+
+           if [ ! -f $QHOME/permission-nodes/permissioned-nodes.json ]; then
+              sed \"s,%{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-enode%,$(cat $QUORUM_DATA_DIR/geth/enode),g\" $QHOME/permission-nodes/permissioned-nodes.json.tmpl > $QHOME/permission-nodes/permissioned-nodes.json;
+           else
+              sed -i \"s,%{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-enode%,$(cat $QUORUM_DATA_DIR/geth/enode),g\" $QHOME/permission-nodes/permissioned-nodes.json;
+           fi;
+           while grep \"{{ include "quorum.fullname" $scope }}-node[1-9]*-enode\" $QHOME/permission-nodes/permissioned-nodes.json > /dev/null; do
+              sleep 2;
+              echo \"Permissioned nodes file has not been configured yet.\";
+           done;
+
+           ISTANBUL_VALIDATOR_ADDRESS=$(ethkey generate --passwordfile $QUORUM_DATA_DIR/password.txt --privatekey $QUORUM_DATA_DIR/geth/nodekey | sed \"s,Address: ,,\"); rm -f keyfile.json;
+
+           if [ ! -f $QHOME/istanbul-validator-config.toml/istanbul-validator-config.toml ]; then
+              sed \"s,%{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-nodekeyaddress%,$ISTANBUL_VALIDATOR_ADDRESS,g\" $QHOME/istanbul-validator-config.toml.tmpl > $QHOME/istanbul-validator-config.toml/istanbul-validator-config.toml;
+           else
+              sed -i \"s,%{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-nodekeyaddress%,$ISTANBUL_VALIDATOR_ADDRESS,g\" $QHOME/istanbul-validator-config.toml/istanbul-validator-config.toml;
+           fi;
+           while grep \"{{ include "quorum.fullname" $scope }}-node[1-9]*-nodekeyaddress\" $QHOME/istanbul-validator-config.toml/istanbul-validator-config.toml > /dev/null; do
+               sleep 2;
+               echo \"Istanbul validator config file has not been configured yet.\";
+           done;
+
+           ISTANBUL_EXTRA_DATA=$(istanbul extra encode --config $QHOME/istanbul-validator-config.toml/istanbul-validator-config.toml | cut -c 30-);
+
+           if [ ! -f $QUORUM_DATA_DIR/genesis_created ]; then
+              if [ ! -f /etc/quorum/genesis/genesis-geth.json ]; then
+                  sed \"s,%{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-nodekeyaddress%,$(cat $QUORUM_DATA_DIR/nodekeyaddress),g\" /etc/quorum/genesis/genesis-geth.json.tmpl > /etc/quorum/genesis/genesis-geth.json;
+                  sed -i \"s,%ISTANBUL_EXTRA_DATA%,$ISTANBUL_EXTRA_DATA,g\" /etc/quorum/genesis/genesis-geth.json;
+              else
+                  sed -i \"s,%{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-nodekeyaddress%,$(cat $QUORUM_DATA_DIR/nodekeyaddress),g\" /etc/quorum/genesis/genesis-geth.json;
+              fi;
+              while grep \"{{ include "quorum.fullname" $scope }}-node[1-9]*-nodekeyaddress\" /etc/quorum/genesis/genesis-geth.json > /dev/null; do
+                 sleep 2;
+                 echo \"Genesis file has not been configured yet.\";
+              done;
+              /usr/local/bin/geth --datadir $QUORUM_DATA_DIR init /etc/quorum/genesis/genesis-geth.json;
+              date > $QUORUM_DATA_DIR/genesis_created;
+           fi;"
+        # ENV  
+        env:
+          - name: PRIVATE_CONFIG
+            value: ignore
+          - name: QUORUM_DATA_DIR
+            value: /etc/quorum/qdata/dd
+          - name: QHOME
+            value: /etc/quorum/qdata
+        volumeMounts:
+        # Quorum persistent storage.
+        - name: quorum-persistent-storage
+          mountPath:  /etc/quorum/qdata
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}
+        # Genesis config persistent volumes.
+        - name: genesis-config-persistent-storage-tmpl
+          mountPath: /etc/quorum/genesis/genesis-geth.json.tmpl
+          subPath: genesis-geth.json.tmpl
+        - name: genesis-config-persistent-storage
+          mountPath: /etc/quorum/genesis
+        # Permission Nodes
+        - name: quorum-permissioned-config-tmpl
+          mountPath: /etc/quorum/qdata/permission-nodes/permissioned-nodes.json.tmpl
+          subPath: permissioned-nodes.json.tmpl
+        - name: quorum-permissioned-config
+          mountPath: /etc/quorum/qdata/permission-nodes
+        # Istanbul Validator
+        - name: istanbul-validator-config-tmpl
+          mountPath: /etc/quorum/qdata/istanbul-validator-config.toml.tmpl
+          subPath: istanbul-validator-config.toml.tmpl
+        - name: istanbul-validator-config
+          mountPath: /etc/quorum/qdata/istanbul-validator-config.toml
+
+      - name: tessera-keygen-init-container
+        image: "{{ $scope.Values.image.tessera.repository }}:{{ $scope.Values.image.tessera.tag }}"
+        command: ["sh"]
+        args:
+        - "-cx"
+        - "if [ ! -f $DDIR/tm.key ]; then
+              java -jar tessera/tessera-app.jar -keygen -filename $DDIR/tm < /dev/null;
+           fi;"
+        env:
+          - name: QHOME
+            value: /etc/quorum/qdata
+          - name: QUORUM_HOME
+            value: /etc/quorum/qdata
+          - name: DDIR
+            value: /etc/quorum/qdata/tm
+        volumeMounts:
+        # Quorum persistent storage mount.
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata/tm
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-tm
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata/logs
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-logs
+
+      containers:
+      - name: tessera
+        image: "{{ $scope.Values.image.tessera.repository }}:{{ $scope.Values.image.tessera.tag }}"
+        {{- if $scope.Values.securityContext.allowPrivilegeEscalation }}
+        securityContext: {{- omit $scope.Values.securityContext "allowPrivilegeEscalation" | toYaml | nindent 12 }}
+        {{- end }}
+        command: ["sh"]
+        args:
+        - "-cx"
+        - "chmod 600 $QUORUM_HOME/tm/tm.key;
+           echo DDIR is $DDIR;
+           printenv;
+
+           TESSERA_VERSION=$(unzip -p /tessera/tessera-app.jar META-INF/MANIFEST.MF | grep Tessera-Version | cut -d\" \" -f2);
+           echo \"Tessera version (extracted from manifest file): ${TESSERA_VERSION}\";
+
+           TESSERA_VERSION=\"${TESSERA_VERSION}-suffix\";
+           Tess_Ver_First=$(echo ${TESSERA_VERSION} | awk -F. '{print $1}');
+           Tess_Ver_Second=$(echo ${TESSERA_VERSION} | awk -F. '{print $2}');
+           Tess_Ver_Third=$(echo ${TESSERA_VERSION} | awk -F. '{print $3}');
+           echo \"version: first [$Tess_Ver_First], second [$Tess_Ver_Second], third [$Tess_Ver_Third]\";
+           echo \"Tessera version - suffix ${TESSERA_VERSION}\";
+           TESSERA_CONFIG_TYPE=;
+
+           if [ \"${Tess_Ver_First}\" -lt \"1\" ] && [ \"${Tess_Ver_Second}\" -eq \"8\" ]; then TESSERA_CONFIG_TYPE=\"-enhanced\";  fi;
+           if [ \"${Tess_Ver_First}\" -ge \"1\" ] || [ \"${Tess_Ver_Second}\" -ge \"9\" ]; then TESSERA_CONFIG_TYPE=\"-9.0\"; fi;
+
+           echo Config type [${TESSERA_CONFIG_TYPE}];
+
+           CONFIG_TMPL=$(cat ${DDIR}/tessera-config${TESSERA_CONFIG_TYPE}.json.tmpl);
+           CONFIG_WITH_THIS_HOST=$(echo $CONFIG_TMPL | sed \"s/%THIS_SERVICE_HOST%/{{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}.{{ $scope.Release.Namespace }}/g\");
+
+           PRIV_KEY=$(cat $DDIR/tm.key)
+           PUB_KEY=$(cat $DDIR/tm.pub)
+           CONFIG_FINAL=$(echo $CONFIG_WITH_THIS_HOST | sed \"s-%THIS_PRIV_KEY%-${PRIV_KEY}-g\" |  sed \"s-%THIS_PUB_KEY%-${PUB_KEY}-g\");
+           CONFIG_FINAL_9_0=$(echo $CONFIG_WITH_THIS_HOST | sed \"s-%THIS_PRIV_KEY%-${DDIR}/tm.key-g\" |  sed \"s-%THIS_PUB_KEY%-${DDIR}/tm.pub-g\");
+
+           if [ \"${Tess_Ver_First}\" -ge \"1\" ] || [ \"${Tess_Ver_Second}\" -ge \"9\" ]; then CONFIG_FINAL=${CONFIG_FINAL_9_0}; fi;
+           echo $CONFIG_FINAL >  ${DDIR}/tessera-config-with-hosts.json;
+           cat  ${DDIR}/tessera-config-with-hosts.json;
+           java -Xms128M -Xmx128M -jar /tessera/tessera-app.jar -configfile ${DDIR}/tessera-config-with-hosts.json | tee -a ${QHOME}/logs/tessera.log;"
+        ports:
+          - containerPort: 9001
+        env:
+          - name: QHOME
+            value: /etc/quorum/qdata
+          - name: QUORUM_HOME
+            value: /etc/quorum/qdata
+          - name: DDIR
+            value: /etc/quorum/qdata/tm
+        volumeMounts:
+        # Quorum persistent storage mount.
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata/tm
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-tm
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata/logs
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-logs
+        # Tessera config mount.
+        - name: tessera-config
+          mountPath: /etc/quorum/qdata/tm/tessera-config.json.tmpl
+          subPath: tessera-config.json.tmpl
+        - name: tessera-config
+          mountPath: /etc/quorum/qdata/tm/tessera-config-enhanced.json.tmpl
+          subPath: tessera-config-enhanced.json.tmpl
+        - name: tessera-config
+          mountPath: /etc/quorum/qdata/tm/tessera-config-9.0.json.tmpl
+          subPath: tessera-config-9.0.json.tmpl
+
+      - name: quorum
+        image: "{{ $scope.Values.image.quorum.repository }}:{{ default $scope.Chart.AppVersion $scope.Values.image.quorum.tag }}"
+        {{- if $scope.Values.securityContext.allowPrivilegeEscalation }}
+        securityContext: {{- omit $scope.Values.securityContext "allowPrivilegeEscalation" | toYaml | nindent 12 }}
+        {{- end }}
+        readinessProbe:
+          exec:
+            command:
+              - ls
+              - $(QHOME)/dd/geth.ipc
+          initialDelaySeconds: 20
+          periodSeconds: 3
+        command: [ "sh" ]
+        args:
+        - "-cx"
+        - "apk add jq;
+
+           ln -s $QUORUM_HOME/permission-nodes/permissioned-nodes.json $QUORUM_DATA_DIR/permissioned-nodes.json;
+           ln -s $QUORUM_HOME/permission-nodes/permissioned-nodes.json $QUORUM_DATA_DIR/static-nodes.json;
+
+           cat /etc/quorum/genesis/genesis-geth.json;
+
+           chmod 644 $QUORUM_DATA_DIR/keystore/key;
+           until $(wget --quiet --tries=1 --spider http://127.0.0.1:9001/upcheck); do echo 'waiting for transaction manager to start...'; sleep 5; done;
+           echo transaction manager is up;
+
+           touch $QUORUM_DATA_DIR/password.txt;
+           NETWORK_ID=1000
+           RPC_APIS=admin,db,eth,debug,miner,net,shh,txpool,personal,web3,quorum
+           args=\" --gcmode archive --istanbul.blockperiod 3 --syncmode full --mine --miner.threads 1 \";
+           RPC_APIS=\"$RPC_APIS,istanbul\";
+           args=\"$args --allow-insecure-unlock \";
+           /usr/local/bin/geth \
+           --datadir $QUORUM_DATA_DIR \
+           $args \
+           --permissioned \
+           --nodiscover \
+           --nat=none \
+           --verbosity {{ $scope.Values.geth.verbosity }} \
+           --networkid $NETWORK_ID \
+           --unlock 0 \
+           --emitcheckpoints \
+           --revertreason \
+           --http \
+           --http.addr 0.0.0.0 \
+           --http.port 8545 \
+           --http.api $RPC_APIS \
+           --ws.api $RPC_APIS \
+           --ws.port 8546 \
+           --port 30303 \
+           --http.corsdomain \"*\" \
+           --http.vhosts \"*\" \
+           --password $QUORUM_DATA_DIR/password.txt 2>&1 | tee -a /etc/quorum/qdata/logs/quorum.log;"
+        ports:
+          - name: rpc-listener
+            containerPort: 8545
+          - name: wsport
+            containerPort: 8546
+          - name: quorum-listener
+            containerPort: {{ $scope.Values.geth.port }}
+          - name: raft-port
+            containerPort: 50401
+        env:
+        - name: PRIVATE_CONFIG
+          value: /etc/quorum/qdata/tm/tm.ipc
+        - name: QUORUM_DATA_DIR
+          value: /etc/quorum/qdata/dd
+        - name: QUORUM_HOME
+          value: /etc/quorum/qdata
+        - name: QHOME
+          value: /etc/quorum/qdata
+        - name: TM_HOME
+          value: /etc/quorum/qdata/tm/
+        - name: THIS_NODE_ID
+          value: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}
+        volumeMounts:
+        # Quorum persistent storage.
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata/tm
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-tm
+        - name: quorum-persistent-storage
+          mountPath: /etc/quorum/qdata/logs
+          subPath: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-logs
+        # Genesis config mount.
+        - name: genesis-config-persistent-storage
+          mountPath: /etc/quorum/genesis
+        # Permissioned config mount.
+        - name: quorum-permissioned-config
+          mountPath: /etc/quorum/qdata/permission-nodes
+        # Istanbul validator mount.
+        - name: istanbul-validator-config
+          mountPath: /etc/quorum/qdata/istanbul-validator-config.toml
+      volumes:
+      # Genesis template
+      - name: genesis-config-persistent-storage-tmpl
+        configMap:
+          name: genesis-config
+          items:
+          - key: genesis-geth.json.tmpl
+            path: genesis-geth.json.tmpl
+      # Istanbul template
+      - name: istanbul-validator-config-tmpl
+        configMap:
+          name: istanbul-validator-config-tmpl
+          items:
+          - key: istanbul-validator-config.toml.tmpl
+            path: istanbul-validator-config.toml.tmpl
+      # Permissioned config template
+      - name: quorum-permissioned-config-tmpl
+        configMap:
+          name: quorum-permissioned-config-tmpl
+          items:
+          - key: permissioned-nodes.json.tmpl
+            path: permissioned-nodes.json.tmpl
+      # Tessera config
+      - name: tessera-config
+        configMap:
+          name: tessera-config
+          items:
+          - key: tessera-config.json.tmpl
+            path: tessera-config.json.tmpl
+          - key: tessera-config-enhanced.json.tmpl
+            path: tessera-config-enhanced.json.tmpl
+          - key: tessera-config-9.0.json.tmpl
+            path: tessera-config-9.0.json.tmpl
+      # PVC (configurable) https://kubernetes.io/docs/concepts/storage/persistent-volumes/#claims-as-volumes
+      # Genesis PVC
+      - name: genesis-config-persistent-storage
+        persistentVolumeClaim:
+          claimName: {{ include "quorum.fullname" $scope }}-genesis-config
+      # Permissioned Config PVC
+      - name: quorum-permissioned-config
+        persistentVolumeClaim:
+          claimName: {{ include "quorum.fullname" $scope }}-permissioned-config
+      # Istanbul Validator PVC
+      - name: istanbul-validator-config
+        persistentVolumeClaim:
+          claimName: {{ include "quorum.fullname" $scope }}-istanbul-validator-config
+      # Persistent Storage PVC
+      - name: quorum-persistent-storage
+        persistentVolumeClaim:
+          claimName: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6 }}-pvc
+---
+{{ end }}

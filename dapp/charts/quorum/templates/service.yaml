@@ -1,0 +1,57 @@
+{{ $scope := . }}
+{{ range $k, $v := .Values.nodes }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}-rpc
+  namespace: {{ $scope.Release.Namespace }}
+  labels:
+    app: {{ include "quorum.fullname" $scope }}
+    tier: backend
+    name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}
+spec:
+  selector:
+    app: {{ include "quorum.fullname" $scope }}
+    tier: backend
+    name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}-deployment
+  type: {{ default "NodePort" $scope.Values.service.type }}
+  ports:
+    - name: rpc-listener
+      protocol: TCP
+      port: 8545
+      targetPort: rpc-listener
+      nodePort: {{ $v.rpc.service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}
+  namespace: {{ $scope.Release.Namespace }}
+  labels:
+    app: {{ include "quorum.fullname" $scope }}
+    tier: backend
+    name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}
+spec:
+  selector:
+    app: {{ include "quorum.fullname" $scope }}
+    tier: backend
+    name: {{ include "quorum.fullname" $scope }}-node{{ $k | substr 4 6}}-deployment
+  ports:
+    - name: tm-manager 
+      protocol: TCP
+      port: 9001
+      targetPort: 9001
+    - name: tm-tessera
+      protocol: TCP
+      port: 9080
+      targetPort: 9080
+    - name: wsport
+      protocol: TCP
+      port: 8546
+      targetPort: wsport
+    - name: quorum-listener
+      protocol: TCP
+      port: 30303
+      targetPort: quorum-listener
+---
+{{ end }}

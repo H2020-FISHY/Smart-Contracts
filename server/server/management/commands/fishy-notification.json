@@ -1,0 +1,18 @@
+{
+    "id": "4b857824-6b04-42a7-8bf1-c80c62638d76",
+    "task_type": "policies.create",
+    "details":
+    {
+        "HSPL": "test",
+        "id": "0c51023d-fa02-4d01-b4d8-456a89700d97",
+        "source": "test",
+        "timestamp": "2022-09-09T11:26:23.531Z",
+        "status": "both",
+        "attack_info":
+        {
+            "name": "test",
+            "location": "test",
+            "type": "test"
+        }
+    }
+}
