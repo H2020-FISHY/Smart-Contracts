@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ipfs
+  labels:
+    app: ipfs
+spec:
+  ports:
+    - name: swarm-tcp
+      targetPort: 4001
+      port: 4001
+      protocol: TCP
+    - name: swarm-udp
+      targetPort: 4001
+      port: 4001
+      protocol: UDP
+    - name: api
+      targetPort: 5001
+      port: 5001
+      protocol: TCP
+    - name: http
+      targetPort: 8080
+      port: 8080
+      protocol: TCP
+  selector:
+    app: ipfs
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ipfs-conf
+data:
+  configure-ipfs.sh: |
+    #!/bin/sh
+    set -e
+    set -x
+    # This is a custom entrypoint for k8s designed to run ipfs nodes in an appropriate
+    # setup for production scenarios.
+    user=ipfs
+
+    mkdir -p /data/ipfs && chown -R ipfs /data/ipfs
+
+    if [ -f /data/ipfs/repo.lock ]; then
+        rm /data/ipfs/repo.lock
+    fi
+
+    if [ -f /data/ipfs/config ]; then
+        rm /data/ipfs/config
+    fi
+    
+    ipfs init --profile=badgerds,server
+    ipfs bootstrap rm all
+    ipfs config Addresses.API /ip4/0.0.0.0/tcp/5001
+    ipfs config Addresses.Gateway /ip4/0.0.0.0/tcp/8080
+    ipfs config --json Swarm.ConnMgr.HighWater 2000
+    ipfs config --json Datastore.BloomFilterSize 1048576
+    ipfs config Datastore.StorageMax 1GB
+
+    chown -R ipfs /data/ipfs
+
+    cp -v /etc/ipfs-swarm-secret/swarm.key $IPFS_PATH/swarm.key
+
+    exit 0
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ipfs
+spec:
+  serviceName: ipfs
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ipfs
+  template:
+    metadata:
+      labels:
+        app: ipfs
+    spec:
+      initContainers:
+        - name: configure-ipfs
+          image: "ipfs/kubo:v0.15.0"
+          env:
+            - name: IPFS_PATH
+              value: /data/ipfs
+          command: ["sh", "/custom/configure-ipfs.sh"]
+          volumeMounts:
+            - name: ipfs-storage
+              mountPath: /data/ipfs
+            - name: configure-script
+              mountPath: /custom
+            - name: ipfs-secret
+              mountPath: /etc/ipfs-swarm-secret
+      containers:
+        - name: ipfs
+          image: "ipfs/kubo:v0.15.0"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IPFS_FD_MAX
+              value: "4096"
+            - name: LIBP2P_FORCE_PNET
+              value: "1"
+            - name: IPFS_PATH
+              value: /data/ipfs
+          ports:
+            - protocol: TCP
+              containerPort: 4001
+            - protocol: UDP
+              containerPort: 4002
+            - protocol: TCP
+              containerPort: 5001
+            - protocol: TCP
+              containerPort: 8080
+          livenessProbe:
+            tcpSocket:
+              port: 4001
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 15
+          volumeMounts:
+            - mountPath: /data/ipfs
+              name: ipfs-storage
+            - name: configure-script
+              mountPath: /custom
+          resources:
+            {}
+      volumes:
+      - name: configure-script
+        configMap:
+          name: ipfs-conf
+      - name: ipfs-secret
+        secret:
+          secretName: ipfs-swarm-key
+
+  volumeClaimTemplates:
+    - metadata:
+        name: ipfs-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
