@@ -5,6 +5,8 @@ The DAPP sub-component of the FISHY Smart Contract component.
 ## Description
 The DAPP component of the FISHY Smart Contract component is a Helm chart responsible for deploying the nodes of a Quorum network and the Smart Contracts we want to access. The present Helm Chart is developed by Synelixis.
 
+This chart can used to make a deployment of Quorum in the FRF.
+
 ## Installation
 To install the Helm chart, run the following:
 ```bash
