@@ -4,5 +4,5 @@ This is the Smart Contarcts Component of the H2020 FISHY Platform. Its main pupr
 
 The project consists of two sub-components:
 
-* The [Smart Conttracts Server](./server/README.md) which is responsible for receiving and storing the FISHY events/reports in IPFS and the information to retrieve them from private IPFS in a private Quorum network (check [DAPP](./dapp/README.md)). 
+* The [Smart Contracts Server](./server/README.md) which is responsible for receiving and storing the FISHY events/reports in IPFS and the information to retrieve them from private IPFS in a private Quorum network (check [DAPP](./dapp/README.md)). 
 * The [DAPP component](./dapp/README.md), which is the private blockchain network used by the Server component to store the necessary information to retrieve the FISHY events/reports from private IPFS.  
